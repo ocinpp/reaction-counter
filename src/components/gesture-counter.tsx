@@ -16,11 +16,12 @@ export default function GestureCounter({
 }: GestureCounterProps) {
   return (
     <motion.div
-      className={`${bgColor} rounded-full px-6 py-3 flex items-center gap-2 shadow-lg`}
+      className={`${bgColor} rounded-full px-6 py-3 flex items-center gap-2 shadow-lg backdrop-blur-sm bg-opacity-90`}
       initial={{ scale: 1 }}
       animate={{
-        scale: [1, 1.1, 1],
-        transition: { duration: 0.3 },
+        scale: [1, 1.2, 1],
+        /* delay 1 second so that it is shown after the thank you page is finished */
+        transition: { duration: 1, delay: 1 },
       }}
       key={count} // This forces the animation to run on count change
     >
