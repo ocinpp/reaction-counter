@@ -500,31 +500,42 @@ export default function Home() {
           <GestureCounter
             count={thumbsUpCount}
             icon={<ThumbsUp />}
-            bgColor="bg-green-600"
+            bgColor="bg-green-600/90"
           />
           <GestureCounter
             count={thumbsDownCount}
             icon={<ThumbsDown />}
-            bgColor="bg-red-600"
+            bgColor="bg-red-600/90"
           />
         </div>
 
         {/* Fullscreen toggle button */}
         <button
           onClick={toggleFullscreen}
-          className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 rounded-full hover:bg-opacity-70 transition-colors"
+          className="absolute top-4 right-4 z-10 p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
           aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
         >
           {isFullscreen ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
         </button>
 
-        {/* Instructions overlay */}
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 m-3">
-          <div className="px-4 py-2 bg-black bg-opacity-50 rounded-full text-sm">
-            Show a thumbs up 👍 or thumbs down 👎 gesture for at least{" "}
-            {GESTURE_VALIDATION_DURATION / 1000} second
+        {/* Question overlay */}
+        {currentGesture === null && isRecognizing && !showThankYou && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 m-3">
+            <div className="px-4 py-2 bg-black/20 rounded-full text-4xl">
+              Let us know how you're feeling!
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Instructions overlay */}
+        {!showThankYou && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 m-3">
+            <div className="px-4 py-2 bg-black/50 rounded-full text-sm">
+              Show a thumbs up 👍 or thumbs down 👎 gesture for at least{" "}
+              {GESTURE_VALIDATION_DURATION / 1000} second
+            </div>
+          </div>
+        )}
 
         {/* Gesture progress indicator (separate from canvas) */}
         {currentGesture && gestureProgress > 0 && (
@@ -536,7 +547,7 @@ export default function Home() {
 
         {/* Loading overlay */}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-20">
             <div className="text-center">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-white mb-4"></div>
               <p>
@@ -550,7 +561,7 @@ export default function Home() {
 
         {/* Error overlay */}
         {errorMessage && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-20">
             <div className="text-center max-w-md p-4">
               <div className="text-red-500 text-4xl mb-2">⚠️</div>
               <h3 className="text-xl font-bold mb-2">Error</h3>

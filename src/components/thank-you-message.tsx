@@ -16,7 +16,7 @@ export default function ThankYouMessage({ gesture }: ThankYouMessageProps) {
 
   return (
     <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 z-30"
+      className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-30"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

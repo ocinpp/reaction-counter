@@ -19,7 +19,7 @@ export default function GestureProgressIndicator({
       <div className="relative flex items-center justify-center">
         {/* Background circle */}
         <div
-          className="absolute w-24 h-24 rounded-full bg-black bg-opacity-50"
+          className="absolute w-24 h-24 rounded-full bg-black/50"
           style={{ width: "100px", height: "100px" }}
         />
 

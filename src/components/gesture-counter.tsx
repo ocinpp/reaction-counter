@@ -16,7 +16,7 @@ export default function GestureCounter({
 }: GestureCounterProps) {
   return (
     <motion.div
-      className={`${bgColor} rounded-full px-6 py-3 flex items-center gap-2 shadow-lg backdrop-blur-sm bg-opacity-90`}
+      className={`${bgColor} rounded-full px-6 py-3 flex items-center gap-2 shadow-lg backdrop-blur-sm`}
       initial={{ scale: 1 }}
       animate={{
         scale: [1, 1.2, 1],
