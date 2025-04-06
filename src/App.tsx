@@ -519,7 +519,7 @@ export default function Home() {
         </button>
 
         {/* Instructions overlay */}
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 m-3">
           <div className="px-4 py-2 bg-black bg-opacity-50 rounded-full text-sm">
             Show a thumbs up 👍 or thumbs down 👎 gesture for at least 1 second
           </div>
