@@ -59,7 +59,9 @@ export default function Home() {
           {
             baseOptions: {
               modelAssetPath:
-                "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+                "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",,
+              delegate:
+                "GPU", // Use GPU delegate for better performance, fallback to CPU if not supported
             },
             runningMode: "VIDEO",
             numHands: 1,
