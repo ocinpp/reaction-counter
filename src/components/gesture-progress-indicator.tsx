@@ -14,8 +14,6 @@ export default function GestureProgressIndicator({
   const color = gesture === "up" ? "#10B981" : "#EF4444";
   const icon = gesture === "up" ? "👍" : "👎";
 
-  console.log(progress);
-
   return (
     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
       <div className="relative flex items-center justify-center">
