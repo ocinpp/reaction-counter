@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ThumbsUp, ThumbsDown, Maximize2, Minimize2 } from "lucide-react";
-import GestureCounter from "@/components/gesture-counter";
-import ThankYouMessage from "@/components/thank-you-message";
-import GestureProgressIndicator from "@/components/gesture-progress-indicator";
+import GestureCounter from "@components/gesture-counter";
+import ThankYouMessage from "@components/thank-you-message";
+import GestureProgressIndicator from "@components/gesture-progress-indicator";
 
 export default function Home() {
   const [thumbsUpCount, setThumbsUpCount] = useState(0);
@@ -521,7 +521,8 @@ export default function Home() {
         {/* Instructions overlay */}
         <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 m-3">
           <div className="px-4 py-2 bg-black bg-opacity-50 rounded-full text-sm">
-            Show a thumbs up 👍 or thumbs down 👎 gesture for at least 1 second
+            Show a thumbs up 👍 or thumbs down 👎 gesture for at least{" "}
+            {GESTURE_VALIDATION_DURATION / 1000} second
           </div>
         </div>
 
