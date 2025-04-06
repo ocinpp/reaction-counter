@@ -16,7 +16,7 @@ export default function ThankYouMessage({ gesture }: ThankYouMessageProps) {
 
   return (
     <motion.div
-      className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 z-10"
+      className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 z-30"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -30,7 +30,7 @@ export default function ThankYouMessage({ gesture }: ThankYouMessageProps) {
         {icon}
       </motion.div>
       <motion.h2
-        className="text-4xl font-bold text-white"
+        className="text-4xl mx-8 font-bold text-white"
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
