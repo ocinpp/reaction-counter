@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ThumbsUp, ThumbsDown } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Maximize2, Minimize2 } from "lucide-react";
 import GestureCounter from "./components/gesture-counter";
 import ThankYouMessage from "./components/thank-you-message";
+import GestureProgressIndicator from "./components/gesture-progress-indicator";
 
 export default function Home() {
   const [thumbsUpCount, setThumbsUpCount] = useState(0);
@@ -18,9 +19,11 @@ export default function Home() {
   const [currentGesture, setCurrentGesture] = useState<"up" | "down" | null>(
     null
   );
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const gestureRecognizerRef = useRef<
     import("@mediapipe/tasks-vision").GestureRecognizer | null
@@ -84,9 +87,13 @@ export default function Home() {
 
     const startCamera = async () => {
       try {
-        // Request camera access
+        // Request camera access with the highest possible resolution
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: "user",
+          },
           audio: false,
         });
 
@@ -105,14 +112,14 @@ export default function Home() {
             videoRef.current?.play();
 
             // Set canvas dimensions once video is loaded
-            if (canvasRef.current && videoRef.current) {
-              canvasRef.current.width = videoRef.current.videoWidth;
-              canvasRef.current.height = videoRef.current.videoHeight;
+            updateCanvasDimensions();
 
-              // Start gesture detection
-              detectGestures();
-              setIsLoading(false);
-            }
+            // Add resize listener to update canvas dimensions when window size changes
+            window.addEventListener("resize", updateCanvasDimensions);
+
+            // Start gesture detection
+            detectGestures();
+            setIsLoading(false);
           };
         }
       } catch (error) {
@@ -126,12 +133,51 @@ export default function Home() {
       }
     };
 
+    const updateCanvasDimensions = () => {
+      if (!canvasRef.current || !videoRef.current || !containerRef.current)
+        return;
+
+      const containerWidth = containerRef.current.clientWidth;
+      const containerHeight = containerRef.current.clientHeight;
+      const videoWidth = videoRef.current.videoWidth;
+      const videoHeight = videoRef.current.videoHeight;
+
+      // Calculate the scaling factor to fill the container while maintaining aspect ratio
+      const scale = Math.max(
+        containerWidth / videoWidth,
+        containerHeight / videoHeight
+      );
+
+      // Set canvas dimensions to fill the container
+      canvasRef.current.width = videoWidth;
+      canvasRef.current.height = videoHeight;
+
+      // Apply CSS scaling to make it fill the container
+      canvasRef.current.style.width = `${videoWidth * scale}px`;
+      canvasRef.current.style.height = `${videoHeight * scale}px`;
+      canvasRef.current.style.left = `${
+        (containerWidth - videoWidth * scale) / 2
+      }px`;
+      canvasRef.current.style.top = `${
+        (containerHeight - videoHeight * scale) / 2
+      }px`;
+
+      // Apply the same scaling to the video element
+      videoRef.current.style.width = `${videoWidth * scale}px`;
+      videoRef.current.style.height = `${videoHeight * scale}px`;
+      videoRef.current.style.left = `${
+        (containerWidth - videoWidth * scale) / 2
+      }px`;
+      videoRef.current.style.top = `${
+        (containerHeight - videoHeight * scale) / 2
+      }px`;
+    };
+
     const detectGestures = () => {
       if (
         !videoRef.current ||
         !canvasRef.current ||
-        !gestureRecognizerRef.current ||
-        !isRecognizing
+        !gestureRecognizerRef.current
       ) {
         rafIdRef.current = requestAnimationFrame(detectGestures);
         return;
@@ -160,46 +206,44 @@ export default function Home() {
         // Get current timestamp for the video frame
         const startTimeMs = performance.now();
 
-        // Process the video frame
-        const results = gestureRecognizerRef.current.recognizeForVideo(
-          video,
-          startTimeMs
-        );
-
-        // Draw video frame
+        // Draw video frame first (do this every frame regardless of recognition state)
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Process results
-        if (results.gestures && results.gestures.length > 0 && isRecognizing) {
-          const gesture = results.gestures[0][0].categoryName;
+        // Only process gesture recognition if we're in recognizing state
+        if (isRecognizing) {
+          // Process the video frame
+          const results = gestureRecognizerRef.current.recognizeForVideo(
+            video,
+            startTimeMs
+          );
 
-          // Draw hand landmarks if available
-          if (results.landmarks) {
-            for (const landmarks of results.landmarks) {
-              drawLandmarks(ctx, landmarks);
+          // Process results
+          if (results.gestures && results.gestures.length > 0) {
+            const gesture = results.gestures[0][0].categoryName;
+
+            // Draw hand landmarks if available
+            if (results.landmarks) {
+              for (const landmarks of results.landmarks) {
+                drawLandmarks(ctx, landmarks);
+              }
             }
+
+            // Check for thumbs up/down gestures
+            let detectedGesture: "up" | "down" | null = null;
+
+            if (gesture === "Thumb_Up") {
+              detectedGesture = "up";
+            } else if (gesture === "Thumb_Down") {
+              detectedGesture = "down";
+            }
+
+            // Handle gesture timing
+            handleGestureTiming(detectedGesture, startTimeMs);
+          } else {
+            // No gesture detected
+            handleGestureTiming(null, startTimeMs);
           }
-
-          // Check for thumbs up/down gestures
-          let detectedGesture: "up" | "down" | null = null;
-
-          if (gesture === "Thumb_Up") {
-            detectedGesture = "up";
-          } else if (gesture === "Thumb_Down") {
-            detectedGesture = "down";
-          }
-
-          // Handle gesture timing
-          handleGestureTiming(detectedGesture, startTimeMs);
-
-          // Draw gesture progress indicator if a gesture is being held
-          if (currentGesture && gestureProgress > 0) {
-            drawGestureProgressIndicator(ctx, currentGesture, gestureProgress);
-          }
-        } else {
-          // No gesture detected
-          handleGestureTiming(null, startTimeMs);
         }
       } catch (error) {
         console.error("Error during gesture detection:", error);
@@ -255,44 +299,6 @@ export default function Home() {
           setGestureProgress(0);
         }
       }
-    };
-
-    const drawGestureProgressIndicator = (
-      ctx: CanvasRenderingContext2D,
-      gesture: "up" | "down",
-      progress: number
-    ) => {
-      const canvas = ctx.canvas;
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const radius = Math.min(canvas.width, canvas.height) * 0.15;
-
-      // Draw background circle
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fill();
-
-      // Draw progress arc
-      ctx.beginPath();
-      ctx.arc(
-        centerX,
-        centerY,
-        radius,
-        -Math.PI / 2,
-        -Math.PI / 2 + Math.PI * 2 * progress
-      );
-      ctx.strokeStyle = gesture === "up" ? "#10B981" : "#EF4444";
-      ctx.lineWidth = 8;
-      ctx.stroke();
-
-      // Draw icon in the center
-      const icon = gesture === "up" ? "👍" : "👎";
-      ctx.font = `${radius}px Arial`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "white";
-      ctx.fillText(icon, centerX, centerY);
     };
 
     const drawLandmarks = (
@@ -399,8 +405,10 @@ export default function Home() {
       if (gestureRecognizerRef.current) {
         gestureRecognizerRef.current.close();
       }
+
+      window.removeEventListener("resize", updateCanvasDimensions);
     };
-  }, [isRecognizing, showThankYou]);
+  }, [isRecognizing, showThankYou, GESTURE_VALIDATION_DURATION]);
 
   // Function to manually trigger gestures (for fallback)
   const triggerGesture = (gesture: "up" | "down") => {
@@ -449,10 +457,49 @@ export default function Home() {
     requestAnimationFrame(animateProgress);
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // Listen for fullscreen change events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   return (
-    <main className="flex min-h-screen flex-col items-center bg-black text-white font-geist p-4">
-      <div className="w-full max-w-4xl">
-        <div className="flex justify-center gap-6 mb-8 mt-4">
+    <main className="flex min-h-screen flex-col items-center bg-black text-white font-geist">
+      <div
+        ref={containerRef}
+        className="relative w-full h-screen overflow-hidden"
+      >
+        {/* Video and canvas elements */}
+        <video
+          ref={videoRef}
+          className="absolute object-cover"
+          autoPlay
+          playsInline
+          muted
+        />
+        <canvas ref={canvasRef} className="absolute" />
+
+        {/* Counters overlay */}
+        <div className="absolute top-4 left-0 right-0 flex justify-center gap-6 z-10">
           <GestureCounter
             count={thumbsUpCount}
             icon={<ThumbsUp />}
@@ -465,87 +512,87 @@ export default function Home() {
           />
         </div>
 
-        <div className="relative w-full aspect-video rounded-lg overflow-hidden">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-white mb-4"></div>
-                <p>
-                  {modelLoaded
-                    ? "Starting camera..."
-                    : "Loading gesture recognition model..."}
-                </p>
-              </div>
-            </div>
-          )}
+        {/* Fullscreen toggle button */}
+        <button
+          onClick={toggleFullscreen}
+          className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 rounded-full hover:bg-opacity-70 transition-colors"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
+        </button>
 
-          {errorMessage && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
-              <div className="text-center max-w-md p-4">
-                <div className="text-red-500 text-4xl mb-2">⚠️</div>
-                <h3 className="text-xl font-bold mb-2">Error</h3>
-                <p>{errorMessage}</p>
-                <button
-                  className="mt-4 px-4 py-2 bg-white text-black rounded-md hover:bg-gray-200 transition-colors"
-                  onClick={() => window.location.reload()}
-                >
-                  Reload Page
-                </button>
-              </div>
-            </div>
-          )}
-
-          <video
-            ref={videoRef}
-            className="absolute inset-0 w-full h-full object-cover"
-            autoPlay
-            playsInline
-            muted
-          />
-          <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-
-          {showThankYou && <ThankYouMessage gesture={lastGesture} />}
-
-          {/* Fallback controls (only shown if there's an error) */}
-          {errorMessage && (
-            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-10">
-              <button
-                className="px-4 py-2 bg-green-600 rounded-full flex items-center gap-2 hover:bg-green-700 transition-colors"
-                onClick={() => triggerGesture("up")}
-                disabled={
-                  !isRecognizing || showThankYou || currentGesture !== null
-                }
-              >
-                <ThumbsUp size={16} />
-                <span>Simulate Thumbs Up</span>
-              </button>
-              <button
-                className="px-4 py-2 bg-red-600 rounded-full flex items-center gap-2 hover:bg-red-700 transition-colors"
-                onClick={() => triggerGesture("down")}
-                disabled={
-                  !isRecognizing || showThankYou || currentGesture !== null
-                }
-              >
-                <ThumbsDown size={16} />
-                <span>Simulate Thumbs Down</span>
-              </button>
-            </div>
-          )}
+        {/* Instructions overlay */}
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
+          <div className="px-4 py-2 bg-black bg-opacity-50 rounded-full text-sm">
+            Show a thumbs up 👍 or thumbs down 👎 gesture for at least 1 second
+          </div>
         </div>
 
-        <p className="text-center text-2xl mt-4 text-gray-400">
-          Show a thumbs up 👍 or thumbs down 👎 gesture to the camera for at
-          least 1 second
-        </p>
+        {/* Gesture progress indicator (separate from canvas) */}
+        {currentGesture && gestureProgress > 0 && (
+          <GestureProgressIndicator
+            gesture={currentGesture}
+            progress={gestureProgress}
+          />
+        )}
 
-        {/* Instructions only shown if there's an error */}
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-white mb-4"></div>
+              <p>
+                {modelLoaded
+                  ? "Starting camera..."
+                  : "Loading gesture recognition model..."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Error overlay */}
         {errorMessage && (
-          <div className="mt-6 text-center">
-            <h2 className="text-xl font-bold mb-2">Instructions</h2>
-            <p className="text-gray-400">
-              Since gesture recognition couldn't be loaded, you can use the
-              buttons above to simulate gestures.
-            </p>
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-20">
+            <div className="text-center max-w-md p-4">
+              <div className="text-red-500 text-4xl mb-2">⚠️</div>
+              <h3 className="text-xl font-bold mb-2">Error</h3>
+              <p>{errorMessage}</p>
+              <button
+                className="mt-4 px-4 py-2 bg-white text-black rounded-md hover:bg-gray-200 transition-colors"
+                onClick={() => window.location.reload()}
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Thank you message */}
+        {showThankYou && <ThankYouMessage gesture={lastGesture} />}
+
+        {/* Fallback controls (only shown if there's an error) */}
+        {errorMessage && (
+          <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-4 z-10">
+            <button
+              className="px-4 py-2 bg-green-600 rounded-full flex items-center gap-2 hover:bg-green-700 transition-colors"
+              onClick={() => triggerGesture("up")}
+              disabled={
+                !isRecognizing || showThankYou || currentGesture !== null
+              }
+            >
+              <ThumbsUp size={16} />
+              <span>Simulate Thumbs Up</span>
+            </button>
+            <button
+              className="px-4 py-2 bg-red-600 rounded-full flex items-center gap-2 hover:bg-red-700 transition-colors"
+              onClick={() => triggerGesture("down")}
+              disabled={
+                !isRecognizing || showThankYou || currentGesture !== null
+              }
+            >
+              <ThumbsDown size={16} />
+              <span>Simulate Thumbs Down</span>
+            </button>
           </div>
         )}
       </div>
