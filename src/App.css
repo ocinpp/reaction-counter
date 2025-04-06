@@ -1,15 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@font-face {
-  font-family: "Geist";
-  src: url("https://assets.vercel.com/raw/upload/v1587415301/fonts/2/inter-var-latin.woff2")
-    format("woff2");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap");
+@import "tailwindcss";
 
 :root {
   --foreground-rgb: 255, 255, 255;
@@ -19,7 +9,10 @@
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
-  font-family: "Geist", sans-serif;
+  font-family: "Geist Mono", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
 }
 
 @layer utilities {
@@ -100,11 +93,11 @@ body {
   }
 }
 
-@layer base {
+/* @layer base {
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
   }
-}
+} */
