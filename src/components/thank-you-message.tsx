@@ -11,6 +11,8 @@ export default function ThankYouMessage({ gesture }: ThankYouMessageProps) {
   const icon =
     gesture === "up" ? <ThumbsUp size={48} /> : <ThumbsDown size={48} />;
   const bgColor = gesture === "up" ? "bg-green-600" : "bg-red-600";
+  const message =
+    gesture === "up" ? "Thank You!" : "We Appreciate Your Feedback!";
 
   return (
     <motion.div
@@ -33,7 +35,7 @@ export default function ThankYouMessage({ gesture }: ThankYouMessageProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
       >
-        Thank You!
+        {message}
       </motion.h2>
     </motion.div>
   );
