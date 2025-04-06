@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ThumbsUp, ThumbsDown, Maximize2, Minimize2 } from "lucide-react";
-import GestureCounter from "./components/gesture-counter";
-import ThankYouMessage from "./components/thank-you-message";
-import GestureProgressIndicator from "./components/gesture-progress-indicator";
+import GestureCounter from "@/components/gesture-counter";
+import ThankYouMessage from "@/components/thank-you-message";
+import GestureProgressIndicator from "@/components/gesture-progress-indicator";
 
 export default function Home() {
   const [thumbsUpCount, setThumbsUpCount] = useState(0);
