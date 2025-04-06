@@ -483,11 +483,8 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-black text-white font-geist">
-      <div
-        ref={containerRef}
-        className="relative w-full h-screen overflow-hidden"
-      >
+    <main className="flex min-h-dvh flex-col items-center bg-black text-white font-geist">
+      <div ref={containerRef} className="relative w-full h-dvh overflow-hidden">
         {/* Video and canvas elements */}
         <video
           ref={videoRef}
