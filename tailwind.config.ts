@@ -11,7 +11,7 @@ const config: Config = {
     theme: {
         extend: {
             fontFamily: {
-                geist: ["Geist", "sans-serif"],
+                geist: ["Geist Mono", "sans-serif"],
             },
             colors: {
                 background: "hsl(var(--background))",
