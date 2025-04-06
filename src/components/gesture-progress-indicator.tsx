@@ -38,7 +38,7 @@ export default function GestureProgressIndicator({
             transform="rotate(-90 60 60)"
             initial={{ strokeDashoffset: 339.292 }}
             animate={{ strokeDashoffset: 339.292 * (1 - progress) }}
-            transition={{ duration: 0.1, ease: "linear" }}
+            transition={{ duration: 0.05, ease: "linear" }}
           />
         </svg>
 
