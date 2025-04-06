@@ -14,6 +14,11 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [modelLoaded, setModelLoaded] = useState(false);
+  const [gestureProgress, setGestureProgress] = useState(0);
+  const [currentGesture, setCurrentGesture] = useState<"up" | "down" | null>(
+    null
+  );
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -21,27 +26,17 @@ export default function Home() {
     import("@mediapipe/tasks-vision").GestureRecognizer | null
   >(null);
   const rafIdRef = useRef<number | null>(null);
+  const gestureStartTimeRef = useRef<number | null>(null);
+  const lastDetectedGestureRef = useRef<"up" | "down" | null>(null);
+
+  // Gesture validation duration in milliseconds (2 second)
+  const GESTURE_VALIDATION_DURATION = 2000;
 
   useEffect(() => {
     let isMounted = true;
 
     const loadMediaPipeTasks = async () => {
       try {
-        // First, load the FilesetResolver and GestureRecognizer scripts
-        // await Promise.all([
-        //   loadScript(
-        //     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm/vision_wasm_internal.js"
-        //   ),
-        //   loadScript(
-        //     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm/vision_wasm_nosimd_internal.js"
-        //   ),
-        // ]);
-
-        // Then load the main vision bundle
-        // await loadScript(
-        //   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js"
-        // );
-
         // Import MediaPipe dynamically
         const vision = await import("@mediapipe/tasks-vision");
 
@@ -49,19 +44,6 @@ export default function Home() {
         const { GestureRecognizer, FilesetResolver } = vision;
 
         if (!isMounted) return;
-
-        // Initialize the gesture recognizer
-        interface MediaPipeTasks {
-          tasks: {
-            vision: {
-              GestureRecognizer: typeof import("@mediapipe/tasks-vision").GestureRecognizer;
-              FilesetResolver: typeof import("@mediapipe/tasks-vision").FilesetResolver;
-            };
-          };
-        }
-        // const vision = (window as unknown as MediaPipeTasks).tasks.vision;
-        // const GestureRecognizer = vision.GestureRecognizer;
-        // const FilesetResolver = vision.FilesetResolver;
 
         // Load the face detection model
         const filesetResolver = await FilesetResolver.forVisionTasks(
@@ -100,28 +82,11 @@ export default function Home() {
       }
     };
 
-    const loadScript = (src: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = src;
-        script.crossOrigin = "anonymous";
-        script.onload = () => resolve();
-        script.onerror = (err) => reject(err);
-        document.body.appendChild(script);
-
-        return () => {
-          if (script.parentNode) {
-            script.parentNode.removeChild(script);
-          }
-        };
-      });
-    };
-
     const startCamera = async () => {
       try {
         // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
+          video: true,
           audio: false,
         });
 
@@ -217,11 +182,24 @@ export default function Home() {
           }
 
           // Check for thumbs up/down gestures
-          if (gesture === "Thumb_Up" && !showThankYou) {
-            handleGestureDetected("up");
-          } else if (gesture === "Thumb_Down" && !showThankYou) {
-            handleGestureDetected("down");
+          let detectedGesture: "up" | "down" | null = null;
+
+          if (gesture === "Thumb_Up") {
+            detectedGesture = "up";
+          } else if (gesture === "Thumb_Down") {
+            detectedGesture = "down";
           }
+
+          // Handle gesture timing
+          handleGestureTiming(detectedGesture, startTimeMs);
+
+          // Draw gesture progress indicator if a gesture is being held
+          if (currentGesture && gestureProgress > 0) {
+            drawGestureProgressIndicator(ctx, currentGesture, gestureProgress);
+          }
+        } else {
+          // No gesture detected
+          handleGestureTiming(null, startTimeMs);
         }
       } catch (error) {
         console.error("Error during gesture detection:", error);
@@ -229,6 +207,92 @@ export default function Home() {
 
       // Continue detection loop
       rafIdRef.current = requestAnimationFrame(detectGestures);
+    };
+
+    const handleGestureTiming = (
+      detectedGesture: "up" | "down" | null,
+      currentTimeMs: number
+    ) => {
+      // If we're showing the thank you message, don't process gestures
+      if (showThankYou) {
+        gestureStartTimeRef.current = null;
+        lastDetectedGestureRef.current = null;
+        setCurrentGesture(null);
+        setGestureProgress(0);
+        return;
+      }
+
+      // If no gesture is detected, reset the timer
+      if (detectedGesture === null) {
+        gestureStartTimeRef.current = null;
+        lastDetectedGestureRef.current = null;
+        setCurrentGesture(null);
+        setGestureProgress(0);
+        return;
+      }
+
+      // If this is a new gesture or a different gesture than before, reset the timer
+      if (lastDetectedGestureRef.current !== detectedGesture) {
+        gestureStartTimeRef.current = currentTimeMs;
+        lastDetectedGestureRef.current = detectedGesture;
+        setCurrentGesture(detectedGesture);
+        setGestureProgress(0);
+        return;
+      }
+
+      // If we're continuing the same gesture, check if we've reached the threshold
+      if (gestureStartTimeRef.current !== null) {
+        const elapsedTime = currentTimeMs - gestureStartTimeRef.current;
+        const progress = Math.min(elapsedTime / GESTURE_VALIDATION_DURATION, 1);
+        setGestureProgress(progress);
+
+        // If we've held the gesture long enough, trigger the action
+        if (elapsedTime >= GESTURE_VALIDATION_DURATION && !showThankYou) {
+          handleGestureDetected(detectedGesture);
+          gestureStartTimeRef.current = null;
+          lastDetectedGestureRef.current = null;
+          setCurrentGesture(null);
+          setGestureProgress(0);
+        }
+      }
+    };
+
+    const drawGestureProgressIndicator = (
+      ctx: CanvasRenderingContext2D,
+      gesture: "up" | "down",
+      progress: number
+    ) => {
+      const canvas = ctx.canvas;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = Math.min(canvas.width, canvas.height) * 0.15;
+
+      // Draw background circle
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fill();
+
+      // Draw progress arc
+      ctx.beginPath();
+      ctx.arc(
+        centerX,
+        centerY,
+        radius,
+        -Math.PI / 2,
+        -Math.PI / 2 + Math.PI * 2 * progress
+      );
+      ctx.strokeStyle = gesture === "up" ? "#10B981" : "#EF4444";
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      // Draw icon in the center
+      const icon = gesture === "up" ? "👍" : "👎";
+      ctx.font = `${radius}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "white";
+      ctx.fillText(icon, centerX, centerY);
     };
 
     const drawLandmarks = (
@@ -342,22 +406,47 @@ export default function Home() {
   const triggerGesture = (gesture: "up" | "down") => {
     if (!isRecognizing || showThankYou) return;
 
-    setLastGesture(gesture);
-    setShowThankYou(true);
-    setIsRecognizing(false);
+    // For manual triggers, we'll simulate the 1-second hold
+    setCurrentGesture(gesture);
 
-    setTimeout(() => {
-      if (gesture === "up") {
-        setThumbsUpCount((prev) => prev + 1);
+    // Animate the progress from 0 to 1 over 1 second
+    let progress = 0;
+    const startTime = performance.now();
+
+    const animateProgress = (timestamp: number) => {
+      progress = Math.min(
+        (timestamp - startTime) / GESTURE_VALIDATION_DURATION,
+        1
+      );
+      setGestureProgress(progress);
+
+      if (progress < 1) {
+        requestAnimationFrame(animateProgress);
       } else {
-        setThumbsDownCount((prev) => prev + 1);
-      }
+        // Once we reach 1, trigger the gesture
+        setCurrentGesture(null);
+        setGestureProgress(0);
 
-      setTimeout(() => {
-        setShowThankYou(false);
-        setIsRecognizing(true);
-      }, 1000);
-    }, 1500);
+        setLastGesture(gesture);
+        setShowThankYou(true);
+        setIsRecognizing(false);
+
+        setTimeout(() => {
+          if (gesture === "up") {
+            setThumbsUpCount((prev) => prev + 1);
+          } else {
+            setThumbsDownCount((prev) => prev + 1);
+          }
+
+          setTimeout(() => {
+            setShowThankYou(false);
+            setIsRecognizing(true);
+          }, 1000);
+        }, 1500);
+      }
+    };
+
+    requestAnimationFrame(animateProgress);
   };
 
   return (
@@ -423,7 +512,9 @@ export default function Home() {
               <button
                 className="px-4 py-2 bg-green-600 rounded-full flex items-center gap-2 hover:bg-green-700 transition-colors"
                 onClick={() => triggerGesture("up")}
-                disabled={!isRecognizing || showThankYou}
+                disabled={
+                  !isRecognizing || showThankYou || currentGesture !== null
+                }
               >
                 <ThumbsUp size={16} />
                 <span>Simulate Thumbs Up</span>
@@ -431,7 +522,9 @@ export default function Home() {
               <button
                 className="px-4 py-2 bg-red-600 rounded-full flex items-center gap-2 hover:bg-red-700 transition-colors"
                 onClick={() => triggerGesture("down")}
-                disabled={!isRecognizing || showThankYou}
+                disabled={
+                  !isRecognizing || showThankYou || currentGesture !== null
+                }
               >
                 <ThumbsDown size={16} />
                 <span>Simulate Thumbs Down</span>
@@ -440,8 +533,9 @@ export default function Home() {
           )}
         </div>
 
-        <p className="text-center mt-4 text-gray-400">
-          Show a thumbs up 👍 or thumbs down 👎 gesture to the camera
+        <p className="text-center text-2xl mt-4 text-gray-400">
+          Show a thumbs up 👍 or thumbs down 👎 gesture to the camera for at
+          least 1 second
         </p>
 
         {/* Instructions only shown if there's an error */}
