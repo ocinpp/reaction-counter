@@ -32,8 +32,8 @@ export default function Home() {
   const gestureStartTimeRef = useRef<number | null>(null);
   const lastDetectedGestureRef = useRef<"up" | "down" | null>(null);
 
-  // Gesture validation duration in milliseconds (2 second)
-  const GESTURE_VALIDATION_DURATION = 2000;
+  // Gesture validation duration in milliseconds (1 second)
+  const GESTURE_VALIDATION_DURATION = 1000;
 
   useEffect(() => {
     let isMounted = true;
@@ -512,7 +512,7 @@ export default function Home() {
         {/* Fullscreen toggle button */}
         <button
           onClick={toggleFullscreen}
-          className="absolute top-4 right-4 z-10 p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+          className="absolute top-4 right-4 z-60 p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
           aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
         >
           {isFullscreen ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
