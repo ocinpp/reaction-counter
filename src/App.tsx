@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ThumbsUp, ThumbsDown, Maximize2, Minimize2 } from "lucide-react";
 import GestureCounter from "@components/gesture-counter";
 import ThankYouMessage from "@components/thank-you-message";
@@ -31,19 +31,30 @@ export default function Home() {
   const rafIdRef = useRef<number | null>(null);
   const gestureStartTimeRef = useRef<number | null>(null);
   const lastDetectedGestureRef = useRef<"up" | "down" | null>(null);
+  const modelInitializedRef = useRef<boolean>(false);
 
   // Gesture validation duration in milliseconds (1 second)
   const GESTURE_VALIDATION_DURATION = 1000;
 
+  // Initialize MediaPipe only once
   useEffect(() => {
     let isMounted = true;
 
     const loadMediaPipeTasks = async () => {
+      // Skip if already initialized
+      if (modelInitializedRef.current) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
+        setIsLoading(true);
+        console.log("Loading MediaPipe model...");
+
         // Import MediaPipe dynamically
         const vision = await import("@mediapipe/tasks-vision");
 
-        // Initialize the face detector
+        // Initialize the gesture recognizer
         const { GestureRecognizer, FilesetResolver } = vision;
 
         if (!isMounted) return;
@@ -70,7 +81,9 @@ export default function Home() {
         if (!isMounted) return;
 
         gestureRecognizerRef.current = gestureRecognizer;
+        modelInitializedRef.current = true;
         setModelLoaded(true);
+        console.log("MediaPipe model loaded successfully");
 
         // Start camera once model is loaded
         await startCamera();
@@ -118,7 +131,7 @@ export default function Home() {
             window.addEventListener("resize", updateCanvasDimensions);
 
             // Start gesture detection
-            detectGestures();
+            startGestureDetection();
             setIsLoading(false);
           };
         }
@@ -133,130 +146,113 @@ export default function Home() {
       }
     };
 
-    const updateCanvasDimensions = () => {
-      if (!canvasRef.current || !videoRef.current || !containerRef.current)
-        return;
+    // Only load the model once when the component mounts
+    loadMediaPipeTasks();
 
-      const containerWidth = containerRef.current.clientWidth;
-      const containerHeight = containerRef.current.clientHeight;
-      const videoWidth = videoRef.current.videoWidth;
-      const videoHeight = videoRef.current.videoHeight;
+    // Clean up
+    return () => {
+      isMounted = false;
 
-      // Calculate the scaling factor to fill the container while maintaining aspect ratio
-      const scale = Math.max(
-        containerWidth / videoWidth,
-        containerHeight / videoHeight
-      );
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
 
-      // Set canvas dimensions to fill the container
-      canvasRef.current.width = videoWidth;
-      canvasRef.current.height = videoHeight;
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
 
-      // Apply CSS scaling to make it fill the container
-      canvasRef.current.style.width = `${videoWidth * scale}px`;
-      canvasRef.current.style.height = `${videoHeight * scale}px`;
-      canvasRef.current.style.left = `${
-        (containerWidth - videoWidth * scale) / 2
-      }px`;
-      canvasRef.current.style.top = `${
-        (containerHeight - videoHeight * scale) / 2
-      }px`;
+      if (gestureRecognizerRef.current && !modelInitializedRef.current) {
+        gestureRecognizerRef.current.close();
+      }
 
-      // Apply the same scaling to the video element
-      videoRef.current.style.width = `${videoWidth * scale}px`;
-      videoRef.current.style.height = `${videoHeight * scale}px`;
-      videoRef.current.style.left = `${
-        (containerWidth - videoWidth * scale) / 2
-      }px`;
-      videoRef.current.style.top = `${
-        (containerHeight - videoHeight * scale) / 2
-      }px`;
+      window.removeEventListener("resize", updateCanvasDimensions);
     };
+  }, []); // Empty dependency array ensures this only runs once
 
-    const detectGestures = () => {
-      if (
-        !videoRef.current ||
-        !canvasRef.current ||
-        !gestureRecognizerRef.current
-      ) {
-        rafIdRef.current = requestAnimationFrame(detectGestures);
-        return;
+  // Handle thank you message and recognition state changes
+  useEffect(() => {
+    // If we're showing the thank you message, pause recognition
+    if (showThankYou) {
+      // Reset gesture state
+      gestureStartTimeRef.current = null;
+      lastDetectedGestureRef.current = null;
+      setCurrentGesture(null);
+      setGestureProgress(0);
+    } else if (modelInitializedRef.current && !rafIdRef.current) {
+      // If the model is loaded and we're not already detecting, restart detection
+      startGestureDetection();
+    }
+
+    return () => {
+      // Clean up animation frame when component unmounts or dependencies change
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
-
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-
-      if (!ctx) {
-        rafIdRef.current = requestAnimationFrame(detectGestures);
-        return;
-      }
-
-      // Make sure video is playing and has valid dimensions
-      if (
-        video.readyState < 2 ||
-        video.videoWidth === 0 ||
-        video.videoHeight === 0
-      ) {
-        rafIdRef.current = requestAnimationFrame(detectGestures);
-        return;
-      }
-
-      try {
-        // Get current timestamp for the video frame
-        const startTimeMs = performance.now();
-
-        // Draw video frame first (do this every frame regardless of recognition state)
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Only process gesture recognition if we're in recognizing state
-        if (isRecognizing) {
-          // Process the video frame
-          const results = gestureRecognizerRef.current.recognizeForVideo(
-            video,
-            startTimeMs
-          );
-
-          // Process results
-          if (results.gestures && results.gestures.length > 0) {
-            const gesture = results.gestures[0][0].categoryName;
-
-            // Draw hand landmarks if available
-            if (results.landmarks) {
-              for (const landmarks of results.landmarks) {
-                drawLandmarks(ctx, landmarks);
-              }
-            }
-
-            // Check for thumbs up/down gestures
-            let detectedGesture: "up" | "down" | null = null;
-
-            if (gesture === "Thumb_Up") {
-              detectedGesture = "up";
-            } else if (gesture === "Thumb_Down") {
-              detectedGesture = "down";
-            }
-
-            // Handle gesture timing
-            handleGestureTiming(detectedGesture, startTimeMs);
-          } else {
-            // No gesture detected
-            handleGestureTiming(null, startTimeMs);
-          }
-        }
-      } catch (error) {
-        console.error("Error during gesture detection:", error);
-      }
-
-      // Continue detection loop
-      rafIdRef.current = requestAnimationFrame(detectGestures);
     };
+  }, [showThankYou]);
 
-    const handleGestureTiming = (
-      detectedGesture: "up" | "down" | null,
-      currentTimeMs: number
-    ) => {
+  const updateCanvasDimensions = useCallback(() => {
+    if (!canvasRef.current || !videoRef.current || !containerRef.current)
+      return;
+
+    const containerWidth = containerRef.current.clientWidth;
+    const containerHeight = containerRef.current.clientHeight;
+    const videoWidth = videoRef.current.videoWidth;
+    const videoHeight = videoRef.current.videoHeight;
+
+    // Calculate the scaling factor to fill the container while maintaining aspect ratio
+    const scale = Math.max(
+      containerWidth / videoWidth,
+      containerHeight / videoHeight
+    );
+
+    // Set canvas dimensions to fill the container
+    canvasRef.current.width = videoWidth;
+    canvasRef.current.height = videoHeight;
+
+    // Apply CSS scaling to make it fill the container
+    canvasRef.current.style.width = `${videoWidth * scale}px`;
+    canvasRef.current.style.height = `${videoHeight * scale}px`;
+    canvasRef.current.style.left = `${
+      (containerWidth - videoWidth * scale) / 2
+    }px`;
+    canvasRef.current.style.top = `${
+      (containerHeight - videoHeight * scale) / 2
+    }px`;
+
+    // Apply the same scaling to the video element
+    videoRef.current.style.width = `${videoWidth * scale}px`;
+    videoRef.current.style.height = `${videoHeight * scale}px`;
+    videoRef.current.style.left = `${
+      (containerWidth - videoWidth * scale) / 2
+    }px`;
+    videoRef.current.style.top = `${
+      (containerHeight - videoHeight * scale) / 2
+    }px`;
+  }, []);
+
+  const handleGestureDetected = useCallback((gesture: "up" | "down") => {
+    setLastGesture(gesture);
+    setShowThankYou(true);
+    setIsRecognizing(false);
+
+    setTimeout(() => {
+      if (gesture === "up") {
+        setThumbsUpCount((prev) => prev + 1);
+      } else {
+        setThumbsDownCount((prev) => prev + 1);
+      }
+
+      setTimeout(() => {
+        setShowThankYou(false);
+        setIsRecognizing(true);
+      }, 1000);
+    }, 1500);
+  }, []);
+
+  const handleGestureTiming = useCallback(
+    (detectedGesture: "up" | "down" | null, currentTimeMs: number) => {
       // If we're showing the thank you message, don't process gestures
       if (showThankYou) {
         gestureStartTimeRef.current = null;
@@ -299,9 +295,12 @@ export default function Home() {
           setGestureProgress(0);
         }
       }
-    };
+    },
+    [handleGestureDetected, showThankYou, GESTURE_VALIDATION_DURATION]
+  );
 
-    const drawLandmarks = (
+  const drawLandmarks = useCallback(
+    (
       ctx: CanvasRenderingContext2D,
       landmarks: { x: number; y: number; z: number }[]
     ) => {
@@ -366,98 +365,152 @@ export default function Home() {
         );
         ctx.fill();
       }
-    };
+    },
+    []
+  );
 
-    const handleGestureDetected = (gesture: "up" | "down") => {
-      setLastGesture(gesture);
-      setShowThankYou(true);
-      setIsRecognizing(false);
+  const startGestureDetection = useCallback(() => {
+    // Clear any existing animation frame
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
 
-      setTimeout(() => {
-        if (gesture === "up") {
-          setThumbsUpCount((prev) => prev + 1);
-        } else {
-          setThumbsDownCount((prev) => prev + 1);
+    const detectGestures = () => {
+      if (
+        !videoRef.current ||
+        !canvasRef.current ||
+        !gestureRecognizerRef.current
+      ) {
+        rafIdRef.current = requestAnimationFrame(detectGestures);
+        return;
+      }
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) {
+        rafIdRef.current = requestAnimationFrame(detectGestures);
+        return;
+      }
+
+      // Make sure video is playing and has valid dimensions
+      if (
+        video.readyState < 2 ||
+        video.videoWidth === 0 ||
+        video.videoHeight === 0
+      ) {
+        rafIdRef.current = requestAnimationFrame(detectGestures);
+        return;
+      }
+
+      try {
+        // Get current timestamp for the video frame
+        const startTimeMs = performance.now();
+
+        // Draw video frame first (do this every frame regardless of recognition state)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Only process gesture recognition if we're in recognizing state and not showing thank you
+        if (isRecognizing && !showThankYou) {
+          // Process the video frame
+          const results = gestureRecognizerRef.current.recognizeForVideo(
+            video,
+            startTimeMs
+          );
+
+          // Process results
+          if (results.gestures && results.gestures.length > 0) {
+            const gesture = results.gestures[0][0].categoryName;
+
+            // Draw hand landmarks if available
+            if (results.landmarks) {
+              for (const landmarks of results.landmarks) {
+                drawLandmarks(ctx, landmarks);
+              }
+            }
+
+            // Check for thumbs up/down gestures
+            let detectedGesture: "up" | "down" | null = null;
+
+            if (gesture === "Thumb_Up") {
+              detectedGesture = "up";
+            } else if (gesture === "Thumb_Down") {
+              detectedGesture = "down";
+            }
+
+            // Handle gesture timing
+            handleGestureTiming(detectedGesture, startTimeMs);
+          } else {
+            // No gesture detected
+            handleGestureTiming(null, startTimeMs);
+          }
         }
+      } catch (error) {
+        console.error("Error during gesture detection:", error);
+      }
 
-        setTimeout(() => {
-          setShowThankYou(false);
-          setIsRecognizing(true);
-        }, 1000);
-      }, 1500);
+      // Continue detection loop
+      rafIdRef.current = requestAnimationFrame(detectGestures);
     };
 
-    // Start loading MediaPipe
-    loadMediaPipeTasks();
-
-    // Clean up
-    return () => {
-      isMounted = false;
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-
-      if (gestureRecognizerRef.current) {
-        gestureRecognizerRef.current.close();
-      }
-
-      window.removeEventListener("resize", updateCanvasDimensions);
-    };
-  }, [isRecognizing, showThankYou, GESTURE_VALIDATION_DURATION]);
+    // Start the detection loop
+    rafIdRef.current = requestAnimationFrame(detectGestures);
+  }, [isRecognizing, showThankYou, drawLandmarks, handleGestureTiming]);
 
   // Function to manually trigger gestures (for fallback)
-  const triggerGesture = (gesture: "up" | "down") => {
-    if (!isRecognizing || showThankYou) return;
+  const triggerGesture = useCallback(
+    (gesture: "up" | "down") => {
+      if (!isRecognizing || showThankYou) return;
 
-    // For manual triggers, we'll simulate the 1-second hold
-    setCurrentGesture(gesture);
+      // For manual triggers, we'll simulate the 1-second hold
+      setCurrentGesture(gesture);
 
-    // Animate the progress from 0 to 1 over 1 second
-    let progress = 0;
-    const startTime = performance.now();
+      // Animate the progress from 0 to 1 over 1 second
+      let progress = 0;
+      const startTime = performance.now();
 
-    const animateProgress = (timestamp: number) => {
-      progress = Math.min(
-        (timestamp - startTime) / GESTURE_VALIDATION_DURATION,
-        1
-      );
-      setGestureProgress(progress);
+      const animateProgress = (timestamp: number) => {
+        progress = Math.min(
+          (timestamp - startTime) / GESTURE_VALIDATION_DURATION,
+          1
+        );
+        setGestureProgress(progress);
 
-      if (progress < 1) {
-        requestAnimationFrame(animateProgress);
-      } else {
-        // Once we reach 1, trigger the gesture
-        setCurrentGesture(null);
-        setGestureProgress(0);
+        if (progress < 1) {
+          requestAnimationFrame(animateProgress);
+        } else {
+          // Once we reach 1, trigger the gesture
+          setCurrentGesture(null);
+          setGestureProgress(0);
 
-        setLastGesture(gesture);
-        setShowThankYou(true);
-        setIsRecognizing(false);
-
-        setTimeout(() => {
-          if (gesture === "up") {
-            setThumbsUpCount((prev) => prev + 1);
-          } else {
-            setThumbsDownCount((prev) => prev + 1);
-          }
+          setLastGesture(gesture);
+          setShowThankYou(true);
+          setIsRecognizing(false);
 
           setTimeout(() => {
-            setShowThankYou(false);
-            setIsRecognizing(true);
-          }, 1000);
-        }, 1500);
-      }
-    };
+            if (gesture === "up") {
+              setThumbsUpCount((prev) => prev + 1);
+            } else {
+              setThumbsDownCount((prev) => prev + 1);
+            }
 
-    requestAnimationFrame(animateProgress);
-  };
+            setTimeout(() => {
+              setShowThankYou(false);
+              setIsRecognizing(true);
+            }, 1000);
+          }, 1500);
+        }
+      };
 
-  const toggleFullscreen = () => {
+      requestAnimationFrame(animateProgress);
+    },
+    [isRecognizing, showThankYou, GESTURE_VALIDATION_DURATION]
+  );
+
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       containerRef.current?.requestFullscreen().catch((err) => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
@@ -467,7 +520,7 @@ export default function Home() {
       document.exitFullscreen();
       setIsFullscreen(false);
     }
-  };
+  }, []);
 
   // Listen for fullscreen change events
   useEffect(() => {
